@@ -55,3 +55,6 @@ CATKIN_IGNORE
 # MacOS metadata files
 .DS_store
 crane_x7_examples/originals/remove_surface/flask/tmp/
+
+*.png
+*.pt
