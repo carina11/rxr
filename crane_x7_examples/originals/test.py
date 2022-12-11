@@ -1,24 +1,28 @@
 #! /usr/bin/python3
-# -*- coding: utf-8 -*-
 import rospy
 import moveit_commander
 from geometry_msgs.msg import Pose
 import math
 import time
-from darknet_ros_msgs.msg import BoundingBoxes
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, PointCloud
 import ros_numpy
 import numpy as np
 from geometry_msgs.msg import PoseStamped, PointStamped
-
-
-
-
+from control_msgs.msg import FollowJointTrajectoryActionGoal
+from std_msgs.msg import String
+from moveit_msgs.srv import GetPositionFK
+from moveit_msgs.msg import MotionPlanRequest
+import random
+import os
+import sys
 import tf
+import requests
+import shutil
 
-PI = math.pi
 
+from yolov5.detect import run
 object_xy = [0, 0]
+PI = math.pi
 robot_xyz = [0.0, 0.0, 0.0]
 
 def set_pose(x, y, z, rz, ry, rx):
@@ -54,15 +58,6 @@ def set_init_pose():
     arm.set_joint_value_target( [0, -0.1, 0, -2.5, 0, 1.2, 1.57] )
     arm.go()
 
-
-def callbackYOLO(bbox):
-    global object_xy
-    object_xy.pop(0)
-    object_xy.pop(0)
-    object_xy.append(bbox.bounding_boxes[0].xmean)
-    object_xy.append(bbox.bounding_boxes[0].ymean)
-
-
 def callbackPointCloud2(pc2):
     pc = ros_numpy.numpify(pc2)
     height = pc.shape[0]
@@ -78,22 +73,24 @@ def callbackPointCloud2(pc2):
     global object_xy
     x = object_xy[0]
     y = object_xy[1]
-    print(x,y)
+    #print(x,y)
     #print(np_points[width*int(y)+int(x)])
     if(not np.math.isnan(np_points[width * int(y) + int(x)][0])):
         camera_point = np_points[width*int(y)+int(x)]
-        tf_listener.waitForTransform( "base_link" , "camera_link", rospy.Time(0), rospy.Duration(5)  )
+        tf_listener.waitForTransform( "base_link" , "camera_depth_optical_frame0", rospy.Time(0), rospy.Duration(5)  )
         pos_from_cam = PointStamped()
-        pos_from_cam.header.frame_id = "camera_link"
+        pos_from_cam.header.frame_id = "camera_depth_optical_frame0"
         pos_from_cam.point.x = camera_point[0]
         pos_from_cam.point.y = camera_point[1]
         pos_from_cam.point.z = camera_point[2]
         pos_trans = tf_listener.transformPoint("base_link", pos_from_cam)
-        print(pos_trans.point)
+        #print(pos_trans.point)
         global robot_xyz
-        robot_xyz = pos_trans.point
+        #robot_xyz = pos_trans.point
+        robot_xyz[0] = pos_trans.point.x
+        robot_xyz[1] = pos_trans.point.y
+        robot_xyz[2] = pos_trans.point.z
 
-    
 
 
 
@@ -102,36 +99,49 @@ def main():
     set_init_pose()
     open_gripper()
 
-    # 正面のものを掴む
-    #x = float(input("x: "))
-    #y = float(input("y: "))
-    #z = float(input("z: "))
-    #set_pose(0.1, y, z, PI/2, 0, PI/2)
-    #set_pose( x-0.07, y, z, PI/2, 0,  PI/2  )
-    shouldContinue = input("shall we continue")
-    global robot_xyz
-    print(robot_xyz)
-    if(robot_xyz[0] != 0.0):
-        set_pose(0.1, robot_xyz[1], robot_xyz[2], PI/2, 0, PI/2)
-        set_pose(robot_xyz[0] - 0.07, robot_xyz[1], robot_xyz[2], PI/2, 0, PI/2)
-        open_gripper(False)
+    url = 'http://localhost:8080/snapshot?topic=/camera0/color/image_raw'
+    file_name = 'obj.png'
+    tmp = 0
+    while(tmp == 0):
+        res = requests.get(url, stream=True)
+        if res.status_code == 200:
+            with open(file_name, 'wb') as f:
+                shutil.copyfileobj(res.raw, f)
+            try:
+                result, label = run(device='cpu', source=file_name, weights='yolov5s.pt', nosave=True, save_txt=True)
+            except:
+                result, label = None, None
+            if(result != None):
+                print(result)
+                print(label)
+                x = (result[1] + result[3]) * 640
+                y = (result[2] + result[4]) * 480
+                global object_xy
+                object_xy = [int(x), int(y)]
+                rospy.sleep(1)
+                open_gripper()
+                set_pose(robot_xyz[0] + 0.05, robot_xyz[1], 0.05, PI/2, 0, PI/2)
+                open_gripper(False)
+                set_pose(0.2, 0, 0.1, PI/2, 0, PI/2)
+                open_gripper()
 
-    # 初期姿勢
-        set_init_pose()
-
-    # 左前45度に置く
-    set_pose( 0.3, -0.3, 0.1, PI/2, 0,  PI/2+PI/4  )
-    open_gripper()
+        tmp = int(input('tmp='))
+    
 
     # 初期姿勢
     set_init_pose()
 
+    # 左前45度に置く
+    #set_pose( 0.3, -0.3, 0.1, PI/2, 0,  PI/2+PI/4  )
+    #open_gripper()
+
+    # 初期姿勢
+    #set_init_pose()
+
 if __name__ == '__main__':
-    rospy.init_node("move_to_position")
+    rospy.init_node("pickup")
 
-    rospy.Subscriber("/darknet_ros/bounding_boxes", BoundingBoxes,callbackYOLO)
-
-    rospy.Subscriber("/camera/depth/points", PointCloud2, callbackPointCloud2)
+    rospy.Subscriber("/camera0/depth/points", PointCloud2, callbackPointCloud2)
 
 
 
