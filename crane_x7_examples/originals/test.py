@@ -102,28 +102,32 @@ def main():
     url = 'http://localhost:8080/snapshot?topic=/camera0/color/image_raw'
     file_name = 'obj.png'
     tmp = 0
+    pickup_object = 'ball'
     while(tmp == 0):
         res = requests.get(url, stream=True)
         if res.status_code == 200:
             with open(file_name, 'wb') as f:
                 shutil.copyfileobj(res.raw, f)
             try:
-                result, label = run(device='cpu', source=file_name, weights='yolov5s.pt', nosave=True, save_txt=True)
+                results = run(device='cpu', source=file_name, weights='yolov5s.pt', nosave=True, save_txt=True)
             except:
-                result, label = None, None
-            if(result != None):
+                results = []
+            for i in range(len(results)):
+                result = results[i][0]
+                label = results[i][1]
                 print(result)
                 print(label)
-                x = (result[1] + result[3]) * 640
-                y = (result[2] + result[4]) * 480
-                global object_xy
-                object_xy = [int(x), int(y)]
-                rospy.sleep(1)
-                open_gripper()
-                set_pose(robot_xyz[0] + 0.05, robot_xyz[1], 0.05, PI/2, 0, PI/2)
-                open_gripper(False)
-                set_pose(0.2, 0, 0.1, PI/2, 0, PI/2)
-                open_gripper()
+                if(pickup_object in label):
+                    x = (result[1] + result[3]) * 640
+                    y = (result[2] + result[4]) * 480
+                    global object_xy
+                    object_xy = [int(x), int(y)]
+                    rospy.sleep(1)
+                    open_gripper()
+                    set_pose(robot_xyz[0] + 0.05, robot_xyz[1], 0.05, PI/2, 0, PI/2)
+                    open_gripper(False)
+                    set_pose(0.2, 0, 0.1, PI/2, 0, PI/2)
+                    open_gripper()
 
         tmp = int(input('tmp='))
     
@@ -149,7 +153,7 @@ if __name__ == '__main__':
     arm = moveit_commander.MoveGroupCommander("arm")
     tf_listener = tf.TransformListener()
 
-    arm.set_max_velocity_scaling_factor(0.1)
+    arm.set_max_velocity_scaling_factor(1.0)
     arm.set_max_acceleration_scaling_factor(1.0)
     gripper = moveit_commander.MoveGroupCommander("gripper")
 
