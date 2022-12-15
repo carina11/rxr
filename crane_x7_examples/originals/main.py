@@ -18,6 +18,7 @@ import sys
 import tf
 import requests
 import shutil
+import speech_recognition as sr
 
 
 from yolov5.detect import run
@@ -91,6 +92,26 @@ def callbackPointCloud2(pc2):
         robot_xyz[1] = pos_trans.point.y
         robot_xyz[2] = pos_trans.point.z
 
+def listen_voice():
+    listener = sr.Recognizer()
+    try:
+        with sr.Microphone() as source:
+            print("Listening...")
+            voice = listener.listen(source)
+            voice_text = listener.recognize_google(voice)
+            print(voice_text)
+            if "apple" in voice_text or "Apple" in voice_text:
+                return "apple", True
+            elif "ball" in voice_text or "Ball" in voice_text:
+                return "ball", True
+            elif "orange" in voice_text or "Orange" in voice_text:
+                return "orange", True
+            else:
+                return voice_text, False
+    except:
+        print("sorry I could not listen")
+        return "failed", False
+
 
 
 
@@ -104,30 +125,33 @@ def main():
     tmp = 0
     pickup_object = 'ball'
     while(tmp == 0):
-        res = requests.get(url, stream=True)
-        if res.status_code == 200:
-            with open(file_name, 'wb') as f:
-                shutil.copyfileobj(res.raw, f)
-            try:
-                results = run(device='cpu', source=file_name, weights='yolov5s.pt', nosave=True, save_txt=True)
-            except:
-                results = []
-            for i in range(len(results)):
-                result = results[i][0]
-                label = results[i][1]
-                print(result)
-                print(label)
-                if(pickup_object in label):
-                    x = (result[1] + result[3]) * 640
-                    y = (result[2] + result[4]) * 480
-                    global object_xy
-                    object_xy = [int(x), int(y)]
-                    rospy.sleep(1)
-                    open_gripper()
-                    set_pose(robot_xyz[0] + 0.05, robot_xyz[1], 0.05, PI/2, 0, PI/2)
-                    open_gripper(False)
-                    set_pose(0.2, 0, 0.1, PI/2, 0, PI/2)
-                    open_gripper()
+        voice, success_flag = listen_voice()
+        if success_flag == True:
+            pickup_object = voice
+            res = requests.get(url, stream=True)
+            if res.status_code == 200:
+                with open(file_name, 'wb') as f:
+                    shutil.copyfileobj(res.raw, f)
+                try:
+                    results = run(device='cpu', source=file_name, weights='yolov5s.pt', nosave=True, save_txt=True)
+                except:
+                    results = []
+                for i in range(len(results)):
+                    result = results[i][0]
+                    label = results[i][1]
+                    print(result)
+                    print(label)
+                    if(pickup_object in label):
+                        x = (result[1] + result[3]) * 640
+                        y = (result[2] + result[4]) * 480
+                        global object_xy
+                        object_xy = [int(x), int(y)]
+                        rospy.sleep(1)
+                        open_gripper()
+                        set_pose(robot_xyz[0] + 0.05, robot_xyz[1], 0.05, PI/2, 0, PI/2)
+                        open_gripper(False)
+                        set_pose(0.2, 0, 0.1, PI/2, 0, PI/2)
+                        open_gripper()
 
         tmp = int(input('tmp='))
     
