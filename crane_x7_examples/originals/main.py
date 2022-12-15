@@ -122,9 +122,9 @@ def main():
 
     url = 'http://localhost:8080/snapshot?topic=/camera0/color/image_raw'
     file_name = 'obj.png'
-    tmp = 0
+    #tmp = 0
     pickup_object = 'ball'
-    while(tmp == 0):
+    while(True):
         voice, success_flag = listen_voice()
         if success_flag == True:
             pickup_object = voice
@@ -153,7 +153,7 @@ def main():
                         set_pose(0.2, 0, 0.1, PI/2, 0, PI/2)
                         open_gripper()
 
-        tmp = int(input('tmp='))
+        #tmp = int(input('tmp='))
     
 
     # 初期姿勢
